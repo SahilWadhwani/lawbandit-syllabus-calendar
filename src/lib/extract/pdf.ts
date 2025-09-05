@@ -1,25 +1,40 @@
-// Node-friendly legacy build (avoids DOM APIs like DOMMatrix)
-import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
-import type { TextItem } from "pdfjs-dist/types/src/display/api";
+// src/lib/extract/pdf.ts
+export async function extractFromPDF(u8: Uint8Array): Promise<string> {
+  const parse = async (bytes: Uint8Array) => {
+    const mod = await import("pdf-parse/lib/pdf-parse.js").catch(() => import("pdf-parse"));
+    const pdfParse: any = (mod as any).default ?? (mod as any);
+    const res = await pdfParse(Buffer.from(bytes));
+    return (res?.text ?? "").trim();
+  };
 
-export async function extractPdfText(file: Buffer): Promise<string> {
-  // No worker setup in Node.
-  const doc = await pdfjs.getDocument({
-    data: file,
-    isEvalSupported: false,
-    useWorkerFetch: false,
-    disableFontFace: true,
-  }).promise;
+  try {
+    return await parse(u8);
+  } catch (err: any) {
+    const msg = String(err?.message || err || "");
+    // Typical messages: "bad XRef entry", "Invalid xref", "trailer", etc.
+    const looksLikeXref = /xref|x-ref|trailer|object stream|bad xref/i.test(msg);
+    if (!looksLikeXref) throw err;
 
-  let text = "";
-
-  for (let i = 1; i <= doc.numPages; i++) {
-    const page = await doc.getPage(i);
-    const content = await page.getTextContent();
-    const items = content.items as TextItem[];
-    const pageText = items.map((it) => it.str).join(" ");
-    text += pageText + "\n";
+    try {
+      const { rewritePdf } = await import("./repair");
+      const repaired = await rewritePdf(u8);
+      return await parse(repaired);
+    } catch (retryErr) {
+      console.error("PDF repair retry failed:", retryErr);
+      // Surface the original useful message to the user
+      throw new Error(
+        "The PDF seems malformed (xref/trailer error). Try re-saving it as PDF (e.g., Print → Save as PDF) or upload a DOCX/TXT version."
+      );
+    }
   }
+}
 
-  return text;
+export function checkPDFHeader(u8: Uint8Array): boolean {
+  if (u8.length < 5) return false;
+  const head = Buffer.from(u8.slice(0, 5)).toString("utf8");
+  return head.startsWith("%PDF-");
+}
+
+export function estimatePDFPages(bytes: number): number {
+  return Math.max(1, Math.round(bytes / (200 * 1024)));
 }

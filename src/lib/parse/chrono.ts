@@ -1,8 +1,10 @@
 import * as chrono from "chrono-node";
+import { toISODate } from "@/lib/utils/dates";
 
-export function parseDate(line: string, refDate = new Date()) {
-  const result = chrono.parse(line, refDate, { forwardDate: true });
-  if (result.length === 0) return undefined;
-  const dt = result[0].date();
-  return dt.toISOString();
+/** Try to parse a date in `s`. If not found, return null. */
+export function tryDate(s: string, base?: Date): string | null {
+  const ref = base ?? new Date();
+  const date = chrono.parseDate(s, ref, { forwardDate: true });
+  if (!date) return null;
+  return toISODate(date);
 }

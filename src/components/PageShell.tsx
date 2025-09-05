@@ -10,7 +10,7 @@ export default function PageShell({ children }: { children: React.ReactNode }) {
       <Separator />
       <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
       <footer className="mx-auto max-w-5xl px-4 py-10 text-xs text-muted-foreground">
-        Built with Next.js, shadcn/ui, and a sprinkle of date magic ✨
+        © {new Date().getFullYear()} Syllabus → Calendar
       </footer>
     </div>
   );

@@ -11,12 +11,15 @@ import { ACCEPTED_MIME, MAX_BYTES, humanSize } from "@/lib/utils/files";
 import clsx from "clsx";
 
 type FileMeta = { name: string; size: number; type: string };
+
 type Props = {
   onExtracted: (text: string, meta: FileMeta) => void;
   onError?: (msg: string) => void;
+  onSelectedFile?: (file: File) => void;
+  onDebug?: (dbg: any) => void; // NEW
 };
 
-export default function UploadZone({ onExtracted, onError }: Props) {
+export default function UploadZone({ onExtracted, onError, onSelectedFile, onDebug }: Props) {
   const [isDragging, setDragging] = React.useState(false);
   const [isLoading, setLoading] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -37,23 +40,31 @@ export default function UploadZone({ onExtracted, onError }: Props) {
       onError?.(err);
       return;
     }
+    onSelectedFile?.(file);
     setLoading(true);
     try {
       const fd = new FormData();
       fd.append("file", file);
       const res = await fetch("/api/extract", { method: "POST", body: fd });
+      const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j?.error ?? `Extract failed (${res.status})`);
+        throw new Error(payload?.error ?? `Extract failed (${res.status})`);
       }
-      const { text } = (await res.json()) as { text: string };
+      const { text, debug } = payload as { text: string; debug?: any };
+      onDebug?.(debug); // surface diagnostics
+      if (!text || text.trim().length === 0) {
+        onError?.(
+          "No extractable text found. If this is a scanned PDF, try 'File → Save as PDF' from a text source, or upload DOCX/TXT."
+        );
+        return;
+      }
       onExtracted(text, { name: file.name, size: file.size, type: file.type });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Upload/extract failed";
       onError?.(msg);
     } finally {
       setLoading(false);
-      inputRef.current?.value && (inputRef.current.value = "");
+      if (inputRef.current) inputRef.current.value = "";
     }
   }
 
@@ -94,9 +105,7 @@ export default function UploadZone({ onExtracted, onError }: Props) {
               ) : (
                 <>
                   <Upload className="h-6 w-6 opacity-70" />
-                  <p className="text-sm">
-                    Drag & drop your syllabus here, or choose a file.
-                  </p>
+                  <p className="text-sm">Drag & drop your syllabus here, or choose a file.</p>
                   <div className="flex items-center gap-3 pt-2">
                     <Input
                       ref={inputRef}
